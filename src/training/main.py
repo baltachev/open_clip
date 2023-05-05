@@ -6,6 +6,8 @@ import subprocess
 import sys
 import random
 from datetime import datetime
+import types
+
 
 import numpy as np
 import torch
@@ -66,6 +68,17 @@ def get_latest_checkpoint(path: str, remote : bool):
         return checkpoints[-1]
     return None
 
+def lock(self, unlocked_layers=0, freeze_layer_norm=False):
+    for param in self.parameters():
+        param.requires_grad = False
+    
+    if unlocked_layers > 0:
+        for layer in [self.transformer.resblocks[-unlocked_layers:], self.ln_final, self.text_projection]:
+            if isinstance(layer, torch.nn.Parameter):
+                layer.requires_grad = True
+            else:
+                for p in layer.parameters():
+                    p.requires_grad = True
 
 def main(args):
     args = parse_args(args)
@@ -263,6 +276,7 @@ def main(args):
             unlocked_groups=args.lock_image_unlocked_groups,
             freeze_bn_stats=args.lock_image_freeze_bn_stats)
     if args.lock_text:
+        model.lock_text_tower = types.MethodType(lock, model)
         model.lock_text_tower(
             unlocked_layers=args.lock_text_unlocked_layers,
             freeze_layer_norm=args.lock_text_freeze_layer_norm)
